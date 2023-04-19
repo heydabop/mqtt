@@ -1,7 +1,7 @@
+use crate::error::ClientError;
+
 use super::message::{self, Message};
-use simple_error::bail;
 use std::collections::HashMap;
-use std::error::Error;
 use std::io::{self, prelude::*};
 use std::net::TcpStream;
 use std::sync::{mpsc, Arc, Mutex};
@@ -126,7 +126,7 @@ impl Client {
         subscribe_msg
     }
 
-    pub fn connect(&mut self, addr: &str) -> Result<(), Box<dyn Error>> {
+    pub fn connect(&mut self, addr: &str) -> Result<(), ClientError> {
         let msg = self.make_connect();
 
         // TCP init
@@ -151,11 +151,7 @@ impl Client {
         let connack = message::parse_slice(&buf).unwrap();
         match connack {
             Message::Connack => (),
-            _ => bail!(
-                "Expected {:?} from server, got {:?}",
-                Message::Connack,
-                connack
-            ),
+            _ => return Err(ClientError::ExpectedConnack(connack)),
         };
 
         println!("Connected!");
@@ -179,11 +175,7 @@ impl Client {
         Ok(())
     }
 
-    pub fn subscribe(
-        &mut self,
-        topic: &str,
-        f: super::PublishHandler,
-    ) -> Result<(), Box<dyn Error>> {
+    pub fn subscribe(&mut self, topic: &str, f: super::PublishHandler) -> Result<(), ClientError> {
         let sub_msg = self.make_subscribe(topic);
 
         println!("Subscribing...");
@@ -195,7 +187,7 @@ impl Client {
 
         let tx = match self.connected.as_ref() {
             Some(c) => &c.tx,
-            None => bail!("Client not connected"),
+            None => return Err(ClientError::NotConnected),
         };
 
         self.pending_subscribe_ids

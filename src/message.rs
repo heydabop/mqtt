@@ -1,6 +1,6 @@
-use simple_error::bail;
-use std::error::Error;
 use std::fmt;
+
+use crate::error::MessageError;
 
 pub const CONNACK: [u8; 4] = [0x20, 2, 0, 0];
 pub const DISCONNECT: [u8; 2] = [0xE0, 0];
@@ -31,15 +31,15 @@ impl fmt::Debug for Message {
     }
 }
 
-pub fn parse_slice(msg: &[u8]) -> Result<Message, Box<dyn Error>> {
+pub fn parse_slice(msg: &[u8]) -> Result<Message, MessageError> {
     if msg.len() < 2 {
-        bail!("Message too short to be valid");
+        return Err(MessageError::TooShort);
     }
 
     match msg[0] >> 4 {
         2 => {
             if msg[0..4] != CONNACK {
-                bail!("Error in CONNACK, expected [32, 2, 0, 0], got {:?}", &msg);
+                return Err(MessageError::InvalidConnack(msg.to_vec()));
             }
             Ok(Message::Connack)
         }
@@ -47,29 +47,25 @@ pub fn parse_slice(msg: &[u8]) -> Result<Message, Box<dyn Error>> {
         9 => Ok(Message::Suback(msg.to_vec())),
         13 => {
             if msg[0..2] != PINGRESP {
-                bail!("Error in PINGRESP, expected [12, 0], got {:?}", &msg);
+                return Err(MessageError::InvalidPingresp(msg.to_vec()));
             }
             Ok(Message::Pingresp)
         }
-        _ => bail!(
-            "Unrecognized message type {} in message {:?}",
-            &msg[0] >> 4,
-            &msg
-        ),
+        _ => Err(MessageError::Unrecognized(msg.to_vec())),
     }
 }
 
-pub fn parse_publish(publish: &[u8]) -> Result<Message, Box<dyn Error>> {
+pub fn parse_publish(publish: &[u8]) -> Result<Message, MessageError> {
     let qos = match publish[0] & 6 {
         0 => 0,
         2 => 1,
-        4 => bail!("Can't handle PUBLISH QoS 2"),
-        _ => bail!("Unexpected QoS value {}", publish[0] & 0x0F),
+        4 => return Err(MessageError::UnableToHandleQos2),
+        _ => return Err(MessageError::UnexpectedQos(publish[0] & 0x0F)),
     };
 
     let (len, offset) = super::decode_length(publish);
     if len == 0 {
-        bail!("Empty publish");
+        return Err(MessageError::EmptyPubluish);
     }
     let topic_len = ((u16::from(publish[offset]) << 8) + u16::from(publish[offset + 1])) as usize;
     let topic = String::from_utf8(publish[offset + 2..topic_len + offset + 2].to_vec())?;
