@@ -25,21 +25,25 @@ pub struct Client {
 }
 
 impl Client {
+    #[must_use]
     pub fn new(client_id: &str, username: &str, password: &str, keep_alive_secs: u8) -> Self {
         let client_id_len = client_id.len();
-        if !(1..=23).contains(&client_id_len) {
-            panic!("Client ID must be between 1 and 23 characters in length");
-        }
+        assert!(
+            (1..=23).contains(&client_id_len),
+            "Client ID must be between 1 and 23 characters in length"
+        );
 
         let username_len = username.len();
-        if !(1..=12).contains(&username_len) {
-            panic!("Username should be between 1 and 23 characters in length");
-        }
+        assert!(
+            (1..=12).contains(&username_len),
+            "Username should be between 1 and 23 characters in length"
+        );
 
         let password_len = password.len();
-        if !(1..=12).contains(&password_len) {
-            panic!("Password should be between 1 and 23 characters in length");
-        }
+        assert!(
+            (1..=12).contains(&password_len),
+            "Password should be between 1 and 23 characters in length"
+        );
 
         Self {
             client_id: Vec::from(client_id),
@@ -63,9 +67,7 @@ impl Client {
 
         let len = 20 + client_id_len + username_len + password_len;
 
-        if len > 127 {
-            panic!("We don't support sending large messages yet");
-        }
+        assert!(len <= 127, "We don't support sending large messages yet");
 
         let mut connect_msg = Vec::<u8>::with_capacity(len as usize);
         connect_msg.extend_from_slice(&[
@@ -103,9 +105,7 @@ impl Client {
     #[allow(clippy::cast_possible_truncation)]
     fn make_subscribe(&mut self, topic: &str) -> Vec<u8> {
         let topic_len = topic.len();
-        if topic_len > 127 {
-            panic!("Topic length too long");
-        }
+        assert!(topic_len <= 127, "Topic length too long");
         let len = topic_len + 5; // 2 bytes for variable header, 2 bytes for topic len, topic, 1 byte for QoS
 
         let mut subscribe_msg = Vec::<u8>::with_capacity(len + 2); // 2 bytes for fixed header
@@ -252,7 +252,7 @@ impl Client {
 
                 if len > 3 {
                     if let Some(e) = stream.read_exact(&mut buf[5..]).err() {
-                        eprintln!("Error reading istream {}", e);
+                        eprintln!("Error reading istream {e}");
                         continue;
                     }
                 }
@@ -280,9 +280,9 @@ impl Client {
                                 tx.send(res).unwrap();
                             }
                         }
-                        _ => eprintln!("Unexpected message type: {:?}", message),
+                        Message::Connack => eprintln!("Unexpected message type: {message:?}"),
                     },
-                    Err(e) => eprintln!("Error parsing message: {}", e),
+                    Err(e) => eprintln!("Error parsing message: {e}"),
                 };
             })
     }
@@ -316,7 +316,7 @@ fn handle_publish(
     payload: Vec<u8>,
     f: Option<&super::PublishHandler>,
 ) -> Vec<Vec<u8>> {
-    println!("Publish topic {}", topic);
+    println!("Publish topic {topic}");
 
     let mut messages = Vec::with_capacity(2);
     if qos == 1 {

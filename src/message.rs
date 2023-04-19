@@ -25,7 +25,7 @@ impl fmt::Debug for Message {
         match self {
             Self::Pingresp => write!(f, "PINGRESP"),
             Self::Connack => write!(f, "CONNACK"),
-            Self::Publish { topic, .. } => write!(f, "PUBLISH {}", topic),
+            Self::Publish { topic, .. } => write!(f, "PUBLISH {topic}"),
             Self::Suback(msg) => write!(f, "SUBACK {}", msg[3]),
         }
     }
@@ -87,11 +87,10 @@ pub fn parse_publish(publish: &[u8]) -> Result<Message, MessageError> {
 }
 
 #[allow(clippy::cast_possible_truncation)]
+#[must_use]
 pub fn make_publish(topic: &str, payload: &str) -> Vec<u8> {
     let topic_len = topic.len();
-    if topic_len > 127 {
-        panic!("Topic length must be less than 127 chars");
-    }
+    assert!(topic_len <= 127, "Topic length must be less than 127 chars");
     let len = topic_len + payload.len() + 2;
     let topic_len = topic_len as u8;
     let mut len_bytes = super::encode_length(len);
@@ -105,6 +104,7 @@ pub fn make_publish(topic: &str, payload: &str) -> Vec<u8> {
     msg
 }
 
+#[must_use]
 pub fn make_puback(msg_id: &[u8]) -> Vec<u8> {
     vec![0x40, 2, msg_id[0], msg_id[1]]
 }

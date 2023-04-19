@@ -28,20 +28,23 @@ pub enum ClientError {
 
 impl fmt::Display for MessageError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use MessageError::*;
+        use MessageError::{
+            EmptyPubluish, InvalidConnack, InvalidPingresp, InvalidTopic, TooShort,
+            UnableToHandleQos2, UnexpectedQos, Unrecognized,
+        };
         match self {
             TooShort => write!(f, "Message too short to be valid"),
             InvalidConnack(msg) => {
-                write!(f, "Error in CONNACK, expected [32, 2, 0, 0], got {:?}", msg)
+                write!(f, "Error in CONNACK, expected [32, 2, 0, 0], got {msg:?}")
             }
-            InvalidPingresp(msg) => write!(f, "Error in PINGRESP, expected [12, 0], got {:?}", msg),
+            InvalidPingresp(msg) => write!(f, "Error in PINGRESP, expected [12, 0], got {msg:?}"),
             Unrecognized(msg) => write!(
                 f,
                 "Unrecognized message type {} in message {:?}",
                 msg[0] >> 4,
                 msg
             ),
-            UnexpectedQos(qos) => write!(f, "Unexpected QoS value {}", qos),
+            UnexpectedQos(qos) => write!(f, "Unexpected QoS value {qos}"),
             UnableToHandleQos2 => write!(f, "Library doesn't support PUBLISH QoS 2"),
             EmptyPubluish => write!(f, "Empty publish"),
             InvalidTopic(e) => e.fmt(f),
@@ -63,7 +66,7 @@ impl From<FromUtf8Error> for MessageError {
 
 impl fmt::Display for ClientError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use ClientError::*;
+        use ClientError::{ExpectedConnack, Io, Mpsc, NotConnected};
         match self {
             ExpectedConnack(msg) => write!(
                 f,

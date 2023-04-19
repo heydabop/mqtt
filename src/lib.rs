@@ -1,3 +1,10 @@
+#![warn(clippy::pedantic)]
+#![allow(
+    clippy::missing_panics_doc,
+    clippy::missing_errors_doc,
+    clippy::module_name_repetitions
+)]
+
 pub mod client;
 pub mod error;
 pub mod message;
@@ -29,7 +36,7 @@ fn decode_length(header: &[u8]) -> (usize, usize) {
         i += 1;
         digit = header[i];
         len += (digit as usize & 127) * multiplier;
-        multiplier *= 128
+        multiplier *= 128;
     }
     (len, i + 1)
 }
