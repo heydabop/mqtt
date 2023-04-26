@@ -218,7 +218,7 @@ impl Client {
         drop(connected.tx);
     }
 
-    pub fn publish(&mut self, topic: &str, payload: &str) {
+    pub fn publish(&self, topic: &str, payload: &str) {
         let msg = message::make_publish(topic, payload);
 
         self.connected
