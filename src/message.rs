@@ -182,9 +182,16 @@ mod test {
     #[test]
     fn short_publish() {
         assert_eq!(
-            make_publish("test/topic", "this is a payload"),
+            make_publish("test/topic", "this is a payload", false),
             vec![
                 0x30, 29, 0, 10, 116, 101, 115, 116, 47, 116, 111, 112, 105, 99, 116, 104, 105,
+                115, 32, 105, 115, 32, 97, 32, 112, 97, 121, 108, 111, 97, 100
+            ]
+        );
+        assert_eq!(
+            make_publish("test/topic", "this is a payload", true),
+            vec![
+                0x31, 29, 0, 10, 116, 101, 115, 116, 47, 116, 111, 112, 105, 99, 116, 104, 105,
                 115, 32, 105, 115, 32, 97, 32, 112, 97, 121, 108, 111, 97, 100
             ]
         );
