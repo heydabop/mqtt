@@ -218,8 +218,8 @@ impl Client {
         drop(connected.tx);
     }
 
-    pub fn publish(&self, topic: &str, payload: &str) {
-        let msg = message::make_publish(topic, payload);
+    pub fn publish(&self, topic: &str, payload: &str, retain: bool) {
+        let msg = message::make_publish(topic, payload, retain);
 
         self.connected
             .as_ref()

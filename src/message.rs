@@ -88,14 +88,14 @@ pub fn parse_publish(publish: &[u8]) -> Result<Message, MessageError> {
 
 #[allow(clippy::cast_possible_truncation)]
 #[must_use]
-pub fn make_publish(topic: &str, payload: &str) -> Vec<u8> {
+pub fn make_publish(topic: &str, payload: &str, retain: bool) -> Vec<u8> {
     let topic_len = topic.len();
     assert!(topic_len <= 127, "Topic length must be less than 127 chars");
     let len = topic_len + payload.len() + 2;
     let topic_len = topic_len as u8;
     let mut len_bytes = super::encode_length(len);
 
-    let mut msg = vec![0x30];
+    let mut msg = vec![0x30 | u8::from(retain)];
     msg.append(&mut len_bytes);
     msg.extend_from_slice(&[0, topic_len]);
     msg.append(&mut Vec::from(topic));
