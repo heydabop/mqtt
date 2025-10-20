@@ -159,7 +159,7 @@ mod test {
                 assert_eq!(payload, Vec::<u8>::new());
             }
             _ => panic!("Received non-publish from parse"),
-        };
+        }
 
         match parse_publish(&[0x30, 5, 0, 3, b'a', b'/', b'b']).unwrap() {
             Message::Publish {
@@ -174,9 +174,9 @@ mod test {
                 assert_eq!(payload, Vec::<u8>::new());
             }
             _ => panic!("Received non-publish from parse"),
-        };
+        }
 
-        assert!(parse_publish(&[0x34, 7, 0, 3, b'a', b'/', b'b', 0, 27]).is_err())
+        assert!(parse_publish(&[0x34, 7, 0, 3, b'a', b'/', b'b', 0, 27]).is_err());
     }
 
     #[test]

@@ -21,9 +21,10 @@ pub enum MessageError {
 #[derive(Debug)]
 pub enum ClientError {
     ExpectedConnack(Message), // Received message other than CONNACK after connecting
-    NotConnected,             // Attempt to subscribe before client connected
+    NotConnected,             // Attempt to use client before connected
     Io(IoError),
     Mpsc(SendError<Vec<u8>>),
+    Message(MessageError),
 }
 
 impl fmt::Display for MessageError {
@@ -66,17 +67,19 @@ impl From<FromUtf8Error> for MessageError {
 
 impl fmt::Display for ClientError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use ClientError::{ExpectedConnack, Io, Mpsc, NotConnected};
+        #[allow(clippy::enum_glob_use)]
+        use ClientError::*;
         match self {
             ExpectedConnack(msg) => write!(
                 f,
                 "Expected {:?} from server, got {:?}",
-                Message::Connack,
+                crate::message::Message::Connack,
                 msg
             ),
             NotConnected => write!(f, "Client not connected"),
             Io(e) => e.fmt(f),
             Mpsc(e) => e.fmt(f),
+            Message(e) => e.fmt(f),
         }
     }
 }
@@ -100,5 +103,11 @@ impl From<IoError> for ClientError {
 impl From<SendError<Vec<u8>>> for ClientError {
     fn from(e: SendError<Vec<u8>>) -> Self {
         Self::Mpsc(e)
+    }
+}
+
+impl From<MessageError> for ClientError {
+    fn from(e: MessageError) -> Self {
+        Self::Message(e)
     }
 }

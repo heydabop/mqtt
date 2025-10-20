@@ -1,4 +1,9 @@
-#![warn(clippy::pedantic)]
+#![warn(
+    clippy::pedantic,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic
+)]
 #![allow(
     clippy::missing_panics_doc,
     clippy::missing_errors_doc,

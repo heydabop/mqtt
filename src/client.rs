@@ -4,7 +4,7 @@ use super::message::{self, Message};
 use std::collections::HashMap;
 use std::io::{self, prelude::*};
 use std::net::TcpStream;
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::thread::{self, JoinHandle};
 use std::time;
 
@@ -148,24 +148,21 @@ impl Client {
 
         let mut buf = [0; 4];
         stream.read_exact(&mut buf)?;
-        let connack = message::parse_slice(&buf).unwrap();
+        let connack = message::parse_slice(&buf)?;
         match connack {
             Message::Connack => (),
             _ => return Err(ClientError::ExpectedConnack(connack)),
-        };
+        }
 
         println!("Connected!");
 
         let (tx, rx): (mpsc::Sender<Vec<u8>>, mpsc::Receiver<Vec<u8>>) = mpsc::channel();
 
-        let o_stream_thread =
-            start_out_thread(stream.try_clone()?, rx).expect("Failed to created o_stream thread");
+        let o_stream_thread = start_out_thread(stream.try_clone()?, rx)?;
 
-        self.start_in_thread(stream.try_clone()?, tx.clone())
-            .expect("Failed to create i_stream thread");
+        self.start_in_thread(stream.try_clone()?, tx.clone())?;
 
-        self.start_ping_thread(tx.clone())
-            .expect("Failed to create ping thread");
+        self.start_ping_thread(tx.clone())?;
 
         self.connected = Some(ConnectedClient {
             tx,
@@ -180,53 +177,64 @@ impl Client {
 
         println!("Subscribing...");
 
-        self.publish_functions
-            .lock()
-            .expect("Error locking on publish functions")
-            .insert(String::from(topic), f);
+        {
+            let mut publish_functions = self.publish_functions.lock().unwrap_or_else(|e| {
+                eprintln!("publish_functions mutex poisoned");
+                e.into_inner()
+            });
+            publish_functions.insert(String::from(topic), f);
+        }
 
         let tx = match self.connected.as_ref() {
             Some(c) => &c.tx,
             None => return Err(ClientError::NotConnected),
         };
 
-        self.pending_subscribe_ids
-            .lock()
-            .expect("Error locking on pending subscribe IDs")
-            .push(sub_msg[3]);
+        {
+            let mut pending_subscribe_ids = self.pending_subscribe_ids.lock().unwrap_or_else(|e| {
+                eprintln!("pending_subscribe_ids mutex poisoned");
+                e.into_inner()
+            });
+            pending_subscribe_ids.push(sub_msg[3]);
+        }
 
         tx.send(sub_msg)?;
 
         Ok(())
     }
 
-    pub fn disconnect(&mut self) {
+    pub fn disconnect(&mut self) -> Result<(), ClientError> {
         println!("Disconnecting...");
 
-        let mut connected = self
-            .connected
-            .take()
-            .expect("Attempt to disconnect while not connected");
+        let Some(mut connected) = self.connected.take() else {
+            return Err(ClientError::NotConnected);
+        };
 
-        connected.tx.send(message::DISCONNECT.to_vec()).unwrap();
-        connected
-            .o_stream_thread
-            .take()
-            .expect("Error getting ostream thread on connected client")
-            .join()
-            .expect("Error joining ostream thread");
+        connected.tx.send(message::DISCONNECT.to_vec())?;
+
+        let Some(stream) = connected.o_stream_thread.take() else {
+            eprintln!("Error getting ostream thread on connected client");
+            return Err(ClientError::NotConnected);
+        };
+        if let Err(e) = stream.join() {
+            eprintln!("Error joining ostream thread {e:?}");
+        }
         drop(connected.tx);
+
+        Ok(())
     }
 
-    pub fn publish(&self, topic: &str, payload: &str, retain: bool) {
+    pub fn publish(&self, topic: &str, payload: &str, retain: bool) -> Result<(), ClientError> {
         let msg = message::make_publish(topic, payload, retain);
 
-        self.connected
-            .as_ref()
-            .expect("Can't publish before connect")
-            .tx
-            .send(msg)
-            .unwrap();
+        let Some(connected) = self.connected.as_ref() else {
+            eprintln!("Can't publish before connect");
+            return Err(ClientError::NotConnected);
+        };
+
+        connected.tx.send(msg)?;
+
+        Ok(())
     }
 
     fn start_in_thread(
@@ -239,51 +247,54 @@ impl Client {
 
         thread::Builder::new()
             .name("i_stream".into())
-            .spawn(move || loop {
-                let mut header = [0; 5];
-                if stream.read(&mut header[..5]).unwrap() == 0 {
-                    break;
-                }
-                let (len, bytes_read) = super::decode_length(&header);
+            .spawn(move || {
+                loop {
+                    let mut header = [0; 5];
+                    if stream.read(&mut header[..5]).unwrap() == 0 {
+                        break;
+                    }
+                    let (len, bytes_read) = super::decode_length(&header);
 
-                let mut buf = Vec::with_capacity(bytes_read + len);
-                buf.extend_from_slice(&header);
-                buf.resize(bytes_read + len, 0);
+                    let mut buf = Vec::with_capacity(bytes_read + len);
+                    buf.extend_from_slice(&header);
+                    buf.resize(bytes_read + len, 0);
 
-                if len > 3 {
-                    if let Some(e) = stream.read_exact(&mut buf[5..]).err() {
+                    if len > 3
+                        && let Some(e) = stream.read_exact(&mut buf[5..]).err()
+                    {
                         eprintln!("Error reading istream {e}");
                         continue;
                     }
-                }
-                match message::parse_slice(&buf) {
-                    Ok(message) => match message {
-                        Message::Pingresp => {}
-                        Message::Suback(msg) => {
-                            let mut pending_subscribe_ids = pending_subscribe_ids
-                                .lock()
-                                .expect("Error locking on subscribe IDs");
-                            handle_suback(&msg, &mut pending_subscribe_ids);
-                        }
-                        Message::Publish {
-                            id,
-                            topic,
-                            qos,
-                            payload,
-                        } => {
-                            let publish_functions = publish_functions
-                                .lock()
-                                .expect("Error locking on publish functions");
-                            let handler = publish_functions.get(&topic);
-                            let mut responses = handle_publish(&id, &topic, qos, payload, handler);
-                            for res in responses.drain(..) {
-                                tx.send(res).unwrap();
+                    match message::parse_slice(&buf) {
+                        Ok(message) => match message {
+                            Message::Pingresp => {}
+                            Message::Suback(msg) => {
+                                let mut pending_subscribe_ids = pending_subscribe_ids
+                                    .lock()
+                                    .expect("Error locking on subscribe IDs");
+                                handle_suback(&msg, &mut pending_subscribe_ids);
                             }
-                        }
-                        Message::Connack => eprintln!("Unexpected message type: {message:?}"),
-                    },
-                    Err(e) => eprintln!("Error parsing message: {e}"),
-                };
+                            Message::Publish {
+                                id,
+                                topic,
+                                qos,
+                                payload,
+                            } => {
+                                let publish_functions = publish_functions
+                                    .lock()
+                                    .expect("Error locking on publish functions");
+                                let handler = publish_functions.get(&topic);
+                                let mut responses =
+                                    handle_publish(&id, &topic, qos, payload, handler);
+                                for res in responses.drain(..) {
+                                    tx.send(res).unwrap();
+                                }
+                            }
+                            Message::Connack => eprintln!("Unexpected message type: {message:?}"),
+                        },
+                        Err(e) => eprintln!("Error parsing message: {e}"),
+                    }
+                }
             })
     }
 
@@ -323,10 +334,10 @@ fn handle_publish(
         messages.push(message::make_puback(id));
     }
 
-    if let Some(f) = f {
-        if let Some(response) = f(payload) {
-            messages.push(response);
-        }
+    if let Some(f) = f
+        && let Some(response) = f(payload)
+    {
+        messages.push(response);
     }
 
     messages
@@ -372,7 +383,9 @@ mod test {
         let mut client = Client::new("iden", "username", "password", 15);
         assert_eq!(
             client.make_subscribe("test/topic"),
-            vec![130, 15, 0, 1, 0, 10, 116, 101, 115, 116, 47, 116, 111, 112, 105, 99, 1]
+            vec![
+                130, 15, 0, 1, 0, 10, 116, 101, 115, 116, 47, 116, 111, 112, 105, 99, 1
+            ]
         );
     }
 
