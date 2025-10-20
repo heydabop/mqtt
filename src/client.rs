@@ -35,13 +35,13 @@ impl Client {
 
         let username_len = username.len();
         assert!(
-            (1..=12).contains(&username_len),
+            (1..=23).contains(&username_len),
             "Username should be between 1 and 23 characters in length"
         );
 
         let password_len = password.len();
         assert!(
-            (1..=12).contains(&password_len),
+            (1..=23).contains(&password_len),
             "Password should be between 1 and 23 characters in length"
         );
 
